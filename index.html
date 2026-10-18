@@ -640,12 +640,48 @@
     return semilla();
   }
   var S = cargar();
-  function guardar() {
-    try { localStorage.setItem(KEY, JSON.stringify(S)); return true; }
-    catch (e) {
-      toast('No hay espacio para guardar. Exporta un respaldo y quita imágenes pesadas.');
-      return false;
+
+  /* ====== SINCRONIZACIÓN: pega aquí la URL de tu Firebase Realtime Database ======
+     Ejemplo: 'https://agencia-urban-default-rtdb.firebaseio.com'  (sin barra al final) */
+  var FIREBASE_URL = 'PEGA_AQUI_LA_URL_DE_TU_REALTIME_DATABASE';
+  var SYNC_ON = /^https:\/\/.+/.test(FIREBASE_URL);
+  var SECCIONES = ['grupoMision', 'members', 'tasks', 'missions', 'links'];
+  function nubeUrl(sec) { return FIREBASE_URL.replace(/\/+$/, '') + '/comunicaciones' + (sec ? '/' + sec : '') + '.json'; }
+  function subirCambios() {
+    if (!SYNC_ON) return;
+    SECCIONES.forEach(function (sec) {
+      var str = JSON.stringify(S[sec]);
+      if (str === enNube[sec]) return;
+      enNube[sec] = str;
+      fetch(nubeUrl(sec), { method: 'PUT', body: JSON.stringify(str) })
+        .then(function (r) { if (!r.ok) throw new Error(r.status); estadoSync('on'); })
+        .catch(function () { delete enNube[sec]; estadoSync('off'); });
+    });
+  }
+  function estadoSync(e) {
+    var el = document.getElementById('sync-estado');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'sync-estado';
+      el.setAttribute('role', 'status');
+      el.style.cssText = 'position:fixed;left:12px;bottom:12px;z-index:60;padding:6px 12px;border-radius:999px;font:500 12px Jost,sans-serif;background:#000c;color:#fff;border:1px solid #ffffff40;backdrop-filter:blur(6px)';
+      document.body.appendChild(el);
     }
+    var t = { on: ['#3ddc84', 'En vivo: cambios compartidos'], off: ['#ffb020', 'Sin conexión: reintentando…'], local: ['#ff5c5c', 'Solo local: falta configurar Firebase'] }[e];
+    el.innerHTML = '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:7px;background:' + t[0] + '"></span>' + t[1];
+  }
+  function guardar() {
+    var ok = true;
+    try { localStorage.setItem(KEY, JSON.stringify(S)); }
+    catch (e) {
+      /* La copia local está llena, pero si hay nube los datos igual se guardan allí */
+      if (!SYNC_ON) {
+        toast('No hay espacio para guardar. Exporta un respaldo y quita imágenes pesadas.');
+        return false;
+      }
+    }
+    subirCambios();
+    return ok;
   }
 
   var toastT;
@@ -1229,6 +1265,66 @@
   $('#t-fecha').value = hoyISO();
   renderTodo();
 
+  /* ---------- Sincronización en tiempo real (Firebase Realtime Database) ---------- */
+  function iniciarSync() {
+    if (!SYNC_ON) { estadoSync('local'); return; }
+    var es = new EventSource(nubeUrl());
+    es.addEventListener('put', function (e) { try { var m = JSON.parse(e.data); recibir(m.path, m.data); } catch (x) {} });
+    es.addEventListener('patch', function (e) {
+      try {
+        var m = JSON.parse(e.data);
+        if (m.path === '/') { Object.keys(m.data || {}).forEach(function (k) { recibir('/' + k, m.data[k]); }); }
+        else recibir(m.path, m.data);
+      } catch (x) {}
+    });
+    es.onopen = function () { estadoSync('on'); subirCambios(); };
+    es.onerror = function () {
+      estadoSync('off');
+      if (es.readyState === 2) setTimeout(iniciarSync, 3000);
+    };
+  }
+  function recibir(path, data) {
+    var cambio = false;
+    if (path === '/') {
+      if (data && typeof data === 'object') {
+        SECCIONES.forEach(function (sec) {
+          if (typeof data[sec] === 'string') cambio = aplicar(sec, data[sec]) || cambio;
+        });
+      }
+      subirCambios(); /* sube lo que aún no exista en la nube (primera vez) */
+    } else {
+      var sec = path.replace(/^\//, '').split('/')[0];
+      if (SECCIONES.indexOf(sec) > -1 && typeof data === 'string') cambio = aplicar(sec, data);
+    }
+    if (cambio) {
+      try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {}
+      refrescar();
+    }
+  }
+  function aplicar(sec, str) {
+    enNube[sec] = str;
+    if (JSON.stringify(S[sec]) === str) return false;
+    try { S[sec] = JSON.parse(str); } catch (e) { return false; }
+    return true;
+  }
+  function escribiendo() {
+    var a = document.activeElement;
+    return a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName);
+  }
+  function refrescar() {
+    if (refrescoPend) return;
+    refrescoPend = true;
+    (function intentar() {
+      if (escribiendo()) { setTimeout(intentar, 1200); return; }
+      refrescoPend = false;
+      renderTodo();
+      toast('Información actualizada por tu equipo');
+    })();
+  }
+  window.addEventListener('online', subirCambios);
+  var enNube = {}, refrescoPend = false;
+  iniciarSync();
+
   /* ---------- Pantalla de inicio ---------- */
   var splash = $('#splash');
   function quitarSplash() {
@@ -1239,7 +1335,6 @@
   setTimeout(quitarSplash, reducido ? 900 : 3400);
   splash.addEventListener('click', quitarSplash);
 })();
-   var FIREBASE_URL = 'https://urban-design-9607c-default-rtdb.firebaseio.com/';
 </script>
 </body>
 </html>
