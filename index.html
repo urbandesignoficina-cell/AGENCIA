@@ -667,7 +667,15 @@
       el.style.cssText = 'position:fixed;left:12px;bottom:12px;z-index:60;padding:6px 12px;border-radius:999px;font:500 12px Jost,sans-serif;background:#000c;color:#fff;border:1px solid #ffffff40;backdrop-filter:blur(6px)';
       document.body.appendChild(el);
     }
-    var t = { on: ['#3ddc84', 'En vivo: cambios compartidos'], off: ['#ffb020', 'Sin conexión: reintentando…'], local: ['#ff5c5c', 'Solo local: falta configurar Firebase'] }[e];
+    var t = { on: ['#3ddc84', 'En vivo: cambios compartidos'], off: ['#ffb020', 'Sin conexión: reintentando…'], local: ['#ff5c5c', 'const firebaseConfig = {
+  apiKey: "AIza...",
+  authDomain: "urban-design-9607c.firebaseapp.com",
+  databaseURL: "https://urban-design-9607c-default-rtdb.firebaseio.com",
+  projectId: "urban-design-9607c",
+  storageBucket: "urban-design-9607c.appspot.com",
+  messagingSenderId: "...",
+  appId: "..."
+};'] }[e];
     el.innerHTML = '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:7px;background:' + t[0] + '"></span>' + t[1];
   }
   function guardar() {
